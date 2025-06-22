@@ -5,6 +5,9 @@
 ```
 # Set up
 cd alx-files_manager && npm install
+
+# starting mongodb server
+sudo service mongod start
 ```
 
 #### Branches
