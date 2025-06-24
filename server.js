@@ -6,7 +6,7 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Enables passing JSON bodies into post request
-app.use(express.json());
+// app.use(express.json());
 
 // Loads all the API routes
 app.use('/', routes);
