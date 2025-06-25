@@ -150,6 +150,82 @@ class FilesController {
 
     return res.status(200).json(result);
   }
+
+  static async putPublish(req, res) {
+    const token = req.headers['x-token'];
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    let fileId;
+    try {
+      fileId = new ObjectId(req.params.id);
+    } catch (err) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const filter = {
+      _id: fileId,
+      userId: new ObjectId(userId),
+    };
+
+    const update = { $set: { isPublic: true } };
+
+    const file = await dbClient.db.collection('files').findOneAndUpdate(
+      filter,
+      update,
+      { returnOriginal: false }
+    );
+
+    if (!file.value) return res.status(404).json({ error: 'Not found' });
+
+    const doc = file.value;
+    return res.status(200).json({
+      id: doc._id.toString(),
+      userId: doc.userId.toString(),
+      name: doc.name,
+      type: doc.type,
+      isPublic: doc.isPublic,
+      parentId: doc.parentId === 0 ? 0 : doc.parentId.toString(),
+    });
+  }
+
+  static async putUnpublish(req, res) {
+    const token = req.headers['x-token'];
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    let fileId;
+    try {
+      fileId = new ObjectId(req.params.id);
+    } catch (err) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const filter = {
+      _id: fileId,
+      userId: new ObjectId(userId),
+    };
+
+    const update = { $set: { isPublic: false } };
+
+    const file = await dbClient.db.collection('files').findOneAndUpdate(
+      filter,
+      update,
+      { returnOriginal: false }
+    );
+
+    if (!file.value) return res.status(404).json({ error: 'Not found' });
+
+    const doc = file.value;
+    return res.status(200).json({
+      id: doc._id.toString(),
+      userId: doc.userId.toString(),
+      name: doc.name,
+      type: doc.type,
+      isPublic: doc.isPublic,
+      parentId: doc.parentId === 0 ? 0 : doc.parentId.toString(),
+    });
+  }
 }
 
 export default FilesController;
