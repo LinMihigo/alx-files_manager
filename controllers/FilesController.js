@@ -4,6 +4,7 @@ import { promises as fsPromises, mkdirSync, existsSync } from 'fs';
 import path from 'path';
 import dbClient from '../utils/db';
 import redisClient from '../utils/redis';
+import mime from 'mime-types';
 
 const VALID_TYPES = ['folder', 'file', 'image'];
 
