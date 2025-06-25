@@ -1,9 +1,9 @@
-import { ObjectId } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import { promises as fsPromises, mkdirSync, existsSync } from 'fs';
 import path from 'path';
-import dbClient from '../utils/db';
+import { ObjectId } from 'mongodb';
 import redisClient from '../utils/redis';
+import dbClient from '../utils/db';
 
 const VALID_TYPES = ['folder', 'file', 'image'];
 
@@ -19,31 +19,27 @@ class FilesController {
     if (!type || !VALID_TYPES.includes(type)) return res.status(400).json({ error: 'Missing type' });
     if ((type === 'file' || type === 'image') && !data) return res.status(400).json({ error: 'Missing data' });
 
-    let parentObjectId = 0;
+    let parentFolderId = parentId;
     if (parentId !== 0) {
-      try {
-        parentObjectId = new ObjectId(parentId);
-      } catch (err) {
-        return res.status(400).json({ error: 'Parent not found' });
-      }
-
-      const parentFile = await dbClient.db.collection('files').findOne({ _id: parentObjectId });
+      const parentFile = await dbClient.db.collection('files').findOne({ _id: new ObjectId(parentId) });
       if (!parentFile) return res.status(400).json({ error: 'Parent not found' });
       if (parentFile.type !== 'folder') return res.status(400).json({ error: 'Parent is not a folder' });
     }
 
-    const fileDoc = {
-      userId: new ObjectId(userId),
+    const userObjectId = new ObjectId(userId);
+    const fileData = {
+      userId: userObjectId,
       name,
       type,
       isPublic,
-      parentId: parentObjectId,
+      parentId: parentId === 0 ? 0 : new ObjectId(parentId),
     };
 
     if (type === 'folder') {
-      const result = await dbClient.db.collection('files').insertOne(fileDoc);
+      const result = await dbClient.db.collection('files').insertOne(fileData);
+      fileData.id = result.insertedId.toString();
       return res.status(201).json({
-        id: result.insertedId.toString(),
+        id: fileData.id,
         userId,
         name,
         type,
@@ -52,7 +48,7 @@ class FilesController {
       });
     }
 
-    // Handle file/image
+    // Handle file or image
     const folderPath = process.env.FOLDER_PATH || '/tmp/files_manager';
     if (!existsSync(folderPath)) mkdirSync(folderPath, { recursive: true });
 
@@ -63,9 +59,8 @@ class FilesController {
       const fileBuffer = Buffer.from(data, 'base64');
       await fsPromises.writeFile(localPath, fileBuffer);
 
-      fileDoc.localPath = localPath;
-
-      const result = await dbClient.db.collection('files').insertOne(fileDoc);
+      fileData.localPath = localPath;
+      const result = await dbClient.db.collection('files').insertOne(fileData);
 
       return res.status(201).json({
         id: result.insertedId.toString(),
@@ -88,7 +83,7 @@ class FilesController {
     let fileId;
     try {
       fileId = new ObjectId(req.params.id);
-    } catch (err) {
+    } catch (e) {
       return res.status(404).json({ error: 'Not found' });
     }
 
@@ -115,29 +110,21 @@ class FilesController {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const parentId = req.query.parentId || '0';
-    const page = parseInt(req.query.page || '0', 10);
-    let parentQueryId = 0;
-
-    if (parentId !== '0') {
-      try {
-        parentQueryId = new ObjectId(parentId);
-      } catch (err) {
-        return res.status(200).json([]); // invalid ObjectId, return empty
-      }
-    }
+    const page = parseInt(req.query.page || 0, 10);
+    const userObjectId = new ObjectId(userId);
 
     const matchQuery = {
-      userId: new ObjectId(userId),
-      parentId: parentQueryId,
+      userId: userObjectId,
+      parentId: parentId === '0' ? 0 : new ObjectId(parentId),
     };
 
-    const files = await dbClient.db.collection('files')
-      .aggregate([
-        { $match: matchQuery },
-        { $skip: page * 20 },
-        { $limit: 20 },
-      ])
-      .toArray();
+    const pipeline = [
+      { $match: matchQuery },
+      { $skip: page * 20 },
+      { $limit: 20 },
+    ];
+
+    const files = await dbClient.db.collection('files').aggregate(pipeline).toArray();
 
     const result = files.map((file) => ({
       id: file._id.toString(),
